@@ -1,0 +1,44 @@
+'\" -*- coding: UTF-8 -*-
+.TH pdscan 1 "July 2023" "pdscan"
+.SH NAME
+pdscan \- describe IRIX software products
+.SH SYNOPSIS
+.nf
+\fBpdscan\fR \fB\-f\fR \fIpdfile\fR
+.fi
+.SH DESCRIPTION
+\fIpdscan\fR will describe an IRIX software package, given its product
+description file.
+.PP
+Software packages for the IRIX operating system are typically prodived as a
+set ("distribution") of files. This is in contrast to other operating systems,
+where a package might be contained in a single file, such as a .deb, .rpm,
+or .msi file.
+.PP
+An IRIX package consists of three or more files:
+.RS
+.TP
+\fIproduct\fR
+The product description file. This is the file which \fIpdscan\fR should be
+pointed at. This is a small file containing the name and version of the
+package, along with various directives.
+.TP
+\fIproduct\fR.idb
+The file database. This is an ASCII file listing all files contained in the
+package.
+.TP
+\fIproduct\fR.man, \fIproduct\fR.data, etc.
+These are containers for the actual data of the package. The package may
+contain multiple "images", such as "man" or "data", which are in separate
+containers and may be installed separately.
+.SH BUGS
+\fBpdscan\fR understands product description versions 5 through 9. Other
+versions might exist, but they have not been observed by the author.
+.SH BUG REPORTS
+Report bugs to <jkbenaim@gmail.com>.
+.SH COPYRIGHT
+Copyright \(co 2023 Jason Benaim.
+.br
+.na
+Licensed under the Apache License, version 2.0.
+<https://www.apache.org/licenses/LICENSE-2.0>

@@ -1,0 +1,48 @@
+pdscan(1)		  General Commands Manual		  pdscan(1)
+
+NAME
+       pdscan - describe IRIX software products
+
+SYNOPSIS
+       pdscan -f pdfile
+
+DESCRIPTION
+       pdscan will describe an IRIX software package, given its product
+       description file.
+
+       Software packages for the IRIX operating system are typically
+       prodived as a set ("distribution") of files. This is in contrast to
+       other operating systems, where a package might be contained in a
+       single file, such as a .deb, .rpm, or .msi file.
+
+       An IRIX package consists of three or more files:
+
+	      product
+		     The product description file. This is the file which
+		     pdscan should be pointed at. This is a small file
+		     containing the name and version of the package, along
+		     with various directives.
+
+	      product.idb
+		     The file database. This is an ASCII file listing all
+		     files contained in the package.
+
+	      product.man, product.data, etc.
+		     These are containers for the actual data of the
+		     package. The package may contain multiple "images",
+		     such as "man" or "data", which are in separate
+		     containers and may be installed separately.
+
+BUGS
+       pdscan understands product description versions 5 through 9. Other
+       versions might exist, but they have not been observed by the author.
+
+BUG REPORTS
+       Report bugs to <jkbenaim@gmail.com>.
+
+COPYRIGHT
+       Copyright © 2023 Jason Benaim.
+       Licensed under the Apache License, version 2.0.
+       <https://www.apache.org/licenses/LICENSE-2.0>
+
+pdscan				 July 2023			  pdscan(1)
