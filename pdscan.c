@@ -342,10 +342,10 @@ int main(int argc, char *argv[])
 			free(subsysName);
 			free(subsysId);
 			free(subsysExpr);
-			char *altName = NULL;
 			if (prodFormat >= 5) {
-				altName = getString();
+				char *altName = getString();
 				printf("\t\taltName: '%s'\n", altName);
+				free(altName);
 			}
 			if (prodFormat >= 6) {
 				printf("\t\tincompats\n");
