@@ -27,11 +27,6 @@ off_t getOffset()
 	return ptr - ptr_src;
 }
 
-void seekMe(off_t offset)
-{
-	ptr += offset;
-}
-
 uint16_t getShort()
 {
 	uint16_t out = 0;
@@ -44,19 +39,9 @@ uint16_t getShort()
 uint32_t getInt()
 {
 	uint32_t out = 0;
-#if 1
 	out = getShort();
 	out <<= 16;
 	out += getShort();
-#else
-	out += *ptr++;
-	out <<= 8;
-	out += *ptr++;
-	out <<= 8;
-	out += *ptr++;
-	out <<= 8;
-	out += *ptr++;
-#endif
 	return out;
 }
 	
@@ -85,7 +70,7 @@ char *getString()
 	memcpy(out, ptr, len);
 	out[len] = '\0';
 	ptr += len;
-	for (int i = 0; i < len; i++) {
+	for (size_t i = 0; i < len; i++) {
 		if (out[i] == '\x01') {
 			out[i] = '^';
 		}
@@ -116,7 +101,7 @@ char *getMatcher(const char *prefix)
 	char *triplet = getTriplet();
 	int32_t from = getInt();
 	int32_t to = getInt();
-	const char *my_prefix = "";
+	const char *my_prefix;
 	if (!prefix) {
 		my_prefix = "";
 	} else if (!strcmp(prefix, "replaces ") && (from < 0)) {
@@ -152,7 +137,7 @@ void getMachInfo()
 	// get machine info
 	uint32_t machCount = getInt();
 	printf("machCount: %d\n", machCount);
-	for (int i = 0; i < machCount; i++) {
+	for (size_t i = 0; i < machCount; i++) {
 		char *m = getString();
 		printf("\tmach '%s'\n", m);
 		free(m);
@@ -175,11 +160,11 @@ void getPrereqs()
 	}
 }
 
-void getAttrs(const char *prefix, uint16_t flags)
+void getAttrs(const char *prefix)
 {
 	uint32_t attrs = getInt();
 	printf("%sattrs: %d\n", prefix, attrs);
-	for (int i = 0; i < attrs; i++) {
+	for (size_t i = 0; i < attrs; i++) {
 		char *attr = getString();
 		printf("%s\t'%s'\n", prefix, attr);
 		free(attr);
@@ -227,6 +212,9 @@ int main(int argc, char *argv[])
 	ptr = ptr_src = m.data;
 
 	// product
+	if ((ptr[0] != 'p') || (ptr[1] != 'd')) {
+		errx(1, "bad file format");
+	}
 	char *prodId = getCstring();
 	printf("prodId: %s\n", prodId);
 	uint16_t magic = getShort();
@@ -262,7 +250,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (prodFormat >= 8) {
-		getAttrs("", 0);
+		getAttrs("");
 	}
 
 	uint16_t imageCount = getShort();
@@ -304,7 +292,7 @@ int main(int argc, char *argv[])
 		}
 		free(derivedFrom);
 		if (prodFormat >= 8) {
-			getAttrs("\t", imageFlags);
+			getAttrs("\t");
 		}
 
 		uint16_t subsysCount = getShort();
@@ -352,7 +340,7 @@ int main(int argc, char *argv[])
 				getRules();
 			}
 			if (prodFormat >= 8) {
-				getAttrs("\t\t", subsysFlags);
+				getAttrs("\t\t");
 			}
 			if (prodFormat >= 9) {
 				getUpdates();

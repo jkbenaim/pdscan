@@ -3,7 +3,7 @@ objects := hexdump.o mapfile.o pdscan.o
 
 #libs:=sqlite3
 
-#EXTRAS += -fsanitize=bounds -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall -flto
+#EXTRAS += -fsanitize=bounds -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall -flto -Wextra
 
 ifdef libs
 LDLIBS  += $(shell pkg-config --libs   ${libs})
