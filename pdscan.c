@@ -227,6 +227,12 @@ int main(int argc, char *argv[])
 	printf("prodMagic: %04x %s\n", prodMagic, (prodMagic==1987)?"(ok)":"(BAD)");
 	uint16_t prodFormat = getShort();
 	printf("prodFormat: %04x\n", prodFormat);
+	switch (prodFormat) {
+	case 5 ... 9:
+		break;
+	default:
+		errx(1, "bad prodFormat: %d not between 5 and 9 inclusive", prodFormat);
+	}
 
 	char *shortName = getString();
 	printf("shortName: '%s'\n", shortName);
@@ -321,8 +327,8 @@ int main(int argc, char *argv[])
 			char *subsysExpr = getString();
 			printf("\t\tsubsysExpr: '%s'\n", subsysExpr);
 			time_t subsysInstallDate = getInt();
-			if (subsysInstallDate != 0) {
-				printf("\t\tsubsysInstallDate: %s\n", ctime(&subsysInstallDate));
+			if (subsysFlags & 0x0080) {
+				printf("\t\tsubsysInstallDate: %s", ctime(&subsysInstallDate));
 			}
 
 			getRules();
@@ -336,7 +342,7 @@ int main(int argc, char *argv[])
 				free(altName);
 			}
 			if (prodFormat >= 6) {
-				printf("\t\tincompats\n");
+				printf("\t\tincompats:\n");
 				getRules();
 			}
 			if (prodFormat >= 8) {
