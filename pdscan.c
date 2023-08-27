@@ -219,8 +219,10 @@ int main(int argc, char *argv[])
 	printf("prodId: %s\n", prodId);
 	uint16_t magic = getShort();
 	printf("magic: %04x %s\n", magic, (magic==1988)?"(ok)":"(BAD)");
-	uint16_t noOfRoots = getShort();
-	printf("noOfRoots: %04x %s\n", noOfRoots, (noOfRoots>=1)?"(ok)":"(BAD)");
+	uint16_t noOfProds = getShort();
+	printf("noOfProds: %04x %s\n", noOfProds, (noOfProds>=1)?"(ok)":"(BAD)");
+
+	for (unsigned prodNum = 0; prodNum < noOfProds; prodNum++) {
 
 	// root
 	uint16_t prodMagic = getShort();
@@ -263,7 +265,7 @@ int main(int argc, char *argv[])
 	printf("imageCount: %04x\n", imageCount);
 
 	for (int image = 0; image < imageCount; image++) {
-		printf("image #%d:\n", image);
+		printf("product #%d image #%d:\n", prodNum, image);
 		uint16_t imageFlags = getShort();
 		printf("\timageFlags: %04x\n", imageFlags);
 		char *imageName = getString();
@@ -359,6 +361,7 @@ int main(int argc, char *argv[])
 
 	free(shortName);
 	free(longName);
+	} // end of foreach(prod)
 	free(prodId);
 
 	MappedFile_Close(m);
