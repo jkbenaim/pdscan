@@ -212,13 +212,17 @@ int main(int argc, char *argv[])
 	ptr = ptr_src = m.data;
 
 	// product
-	if ((ptr[0] != 'p') || (ptr[1] != 'd')) {
-		errx(1, "bad file format");
-	}
-	char *prodId = getCstring();
-	printf("prodId: %s\n", prodId);
+	char *prodId = NULL;
+	if ((ptr[0] == 'p') || (ptr[1] == 'd')) {
+                prodId = getCstring();
+                printf("prodId: present, '%s'\n", prodId);
+	} else {
+                printf("prodId: not present\n");
+        }
+
 	uint16_t magic = getShort();
 	printf("magic: %04x %s\n", magic, (magic==1988)?"(ok)":"(BAD)");
+        if (magic != 1988) return 1;
 	uint16_t noOfProds = getShort();
 	printf("noOfProds: %04x %s\n", noOfProds, (noOfProds>=1)?"(ok)":"(BAD)");
 
@@ -227,6 +231,7 @@ int main(int argc, char *argv[])
 	// root
 	uint16_t prodMagic = getShort();
 	printf("prodMagic: %04x %s\n", prodMagic, (prodMagic==1987)?"(ok)":"(BAD)");
+        if (prodMagic != 1987) return 1;
 	uint16_t prodFormat = getShort();
 	printf("prodFormat: %04x\n", prodFormat);
 	switch (prodFormat) {
