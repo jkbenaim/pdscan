@@ -10,7 +10,6 @@
 #include <unistd.h>
 
 #include "escape.h"
-#include "hexdump.h"
 #include "mapfile.h"
 
 #define ARRAY_LENGTH(x) (sizeof(x)/sizeof(*x))
