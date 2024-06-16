@@ -1,5 +1,5 @@
 target  ?= pdscan
-objects := hexdump.o mapfile.o pdscan.o
+objects := escape.o hexdump.o mapfile.o pdscan.o
 
 #libs:=sqlite3
 
