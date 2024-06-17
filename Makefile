@@ -14,7 +14,7 @@ LDFLAGS += ${EXTRAS}
 CFLAGS  += -std=gnu99 -ggdb ${EXTRAS}
 
 .PHONY: all
-all:	$(target) README
+all:	$(target)
 
 .PHONY: clean
 clean:
