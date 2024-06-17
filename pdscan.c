@@ -2,6 +2,7 @@
 #include <err.h>
 #include <inttypes.h>
 #include <iso646.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,10 +12,13 @@
 
 #include "escape.h"
 #include "mapfile.h"
+#include "version.h"
 
 #define ARRAY_LENGTH(x) (sizeof(x)/sizeof(*x))
 
 extern char *__progname;
+static void vtryhelp(const char *fmt, va_list args);
+static void tryhelp(const char *fmt, ...);
 static void usage(void);
 
 uint8_t *ptr_src = NULL;
@@ -318,33 +322,39 @@ void getUpdates()
 
 int main(int argc, char *argv[])
 {
-	char *fileName = NULL;
+	char *filename = NULL;
 	int rc;
 	
-	while ((rc = getopt(argc, argv, "f:jv")) != -1)
+	while ((rc = getopt(argc, argv, "f:jV")) != -1)
 		switch (rc) {
 		case 'f':
-			if (fileName)
+			if (filename)
 				usage();
-			fileName = optarg;
+			filename = optarg;
 			break;
 		case 'j':
 			if (is_json)
 				usage();
 			is_json = 1;
 			break;
+		case 'V':
+			fprintf(stderr, "%s\n", PROG_EMBLEM);
+			exit(EXIT_SUCCESS);
+			break;
 		default:
 			usage();
 		}
 	argc -= optind;
 	argv += optind;
-	if (not fileName)
-		usage();
-	if (*argv != NULL)
-		usage();
 
-	struct MappedFile_s m = MappedFile_Open(fileName, false);
-	if (!m.data) err(1, "couldn't open file '%s' for reading", fileName);
+	if (*argv != NULL) {
+		filename = *argv;
+	} else {
+		tryhelp("must specify product file");
+	}
+
+	struct MappedFile_s m = MappedFile_Open(filename, false);
+	if (!m.data) err(1, "couldn't open file '%s' for reading", filename);
 	ptr = ptr_src = m.data;
 
 	if (is_json) {
@@ -663,10 +673,37 @@ int main(int argc, char *argv[])
 	return EXIT_SUCCESS;
 }
 
+static void vtryhelp(const char *fmt, va_list args)
+{
+	if (fmt) {
+		fprintf(stderr, "%s: ", __progname);
+		vfprintf(stderr, fmt, args);
+		fprintf(stderr, "\n");
+	}
+	fprintf(stderr, "Try `%s -h' for more information.\n", __progname);
+	exit(EXIT_FAILURE);
+}
+
+static void tryhelp(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vtryhelp(fmt, ap);
+	va_end(ap);
+}
+
 static void usage(void)
 {
-	(void)fprintf(stderr, "usage: %s -f file\n",
-		__progname
+	(void)fprintf(stderr,
+"Usage: %s [OPTION] FILE\n"
+"Describe the IRIX software package given its product description file.\n"
+"\n"
+"  -h       print this help text\n"
+"  -j       output in JSON format\n"
+"  -V       print program version\n"
+"\n"
+"Please report any bugs to <jkbenaim@gmail.com>.\n"
+,		__progname
 	);
 	exit(EXIT_FAILURE);
 }
