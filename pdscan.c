@@ -320,43 +320,76 @@ void getUpdates()
 	}
 }
 
-int main(int argc, char *argv[])
+void decodeFlags(uint16_t subsysFlags, const char *prefix)
 {
-	char *filename = NULL;
-	int rc;
-	
-	while ((rc = getopt(argc, argv, "f:jV")) != -1)
-		switch (rc) {
-		case 'f':
-			if (filename)
-				usage();
-			filename = optarg;
-			break;
-		case 'j':
-			if (is_json)
-				usage();
-			is_json = 1;
-			break;
-		case 'V':
-			fprintf(stderr, "%s\n", PROG_EMBLEM);
-			exit(EXIT_SUCCESS);
-			break;
-		default:
-			usage();
-		}
-	argc -= optind;
-	argv += optind;
-
-	if (*argv != NULL) {
-		filename = *argv;
-	} else {
-		tryhelp("must specify product file");
+	if (subsysFlags & 0x0001) {
+		printf("%s", prefix);
+		printf("required\n");
 	}
+	if (subsysFlags & 0x0002) {
+		printf("%s", prefix);
+		printf("default\n");
+	}
+	if (subsysFlags & 0x0004) {
+		printf("%s", prefix);
+		printf("unknown flag 0004\n");
+	}
+	if (subsysFlags & 0x0008) {
+		printf("%s", prefix);
+		printf("unknown flag 0008\n");
+	}
+	if (~subsysFlags & 0x0010) {
+		printf("%s", prefix);
+		printf("unknown flag 0010 is not set\n");
+	}
+	if (subsysFlags & 0x0020) {
+		printf("%s", prefix);
+		printf("was deleted\n");
+	}
+	if (~subsysFlags & 0x0040) {
+		printf("%s", prefix);
+		printf("unknown flag 0040 is not set\n");
+	}
+	if (subsysFlags & 0x0080) {
+		printf("%s", prefix);
+		printf("is installed\n");
+	}
+	if (subsysFlags & 0x0100) {
+		printf("%s", prefix);
+		printf("unknown flag 0100\n");
+	}
+	if (subsysFlags & 0x0200) {
+		printf("%s", prefix);
+		printf("unknown flag 0200\n");
+	}
+	if (subsysFlags & 0x0400) {
+		printf("%s", prefix);
+		printf("patch\n");
+	}
+	if (~subsysFlags & 0x0800) {
+		printf("%s", prefix);
+		printf("miniroot\n");
+	}
+	if (subsysFlags & 0x1000) {
+		printf("%s", prefix);
+		printf("unknown flag 1000\n");
+	}
+	if (subsysFlags & 0x2000) {
+		printf("%s", prefix);
+		printf("clientonly\n");
+	}
+	if (subsysFlags & 0x4000) {
+		printf("%s", prefix);
+		printf("unknown flag 4000\n");
+	}
+	if (subsysFlags & 0x8000) {
+		printf("%s", prefix);
+		printf("overlays (see 'b' attribute)\n");
+	}
+}
 
-	struct MappedFile_s m = MappedFile_Open(filename, false);
-	if (!m.data) err(1, "couldn't open file '%s' for reading", filename);
-	ptr = ptr_src = m.data;
-
+int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len)
+{
 	if (is_json) {
 		printf("{\n");
 	}
@@ -376,6 +409,7 @@ int main(int argc, char *argv[])
 		}
         }
 
+#if 0
 	uint16_t magic = getShort();
 	if (!is_json) {
 		printf("magic: %04x %s\n", magic, (magic==1988)?"(ok)":"(BAD)");
@@ -392,8 +426,11 @@ int main(int argc, char *argv[])
 		printf("\"products\": [\n");
 	}
 
+#else
+	uint16_t magic = 0;
+	uint16_t noOfProds = 1;
+#endif
 	for (unsigned prodNum = 0; prodNum < noOfProds; prodNum++) {
-
 	// root
 	uint16_t prodMagic = getShort();
 	if (!is_json) {
@@ -507,7 +544,7 @@ int main(int argc, char *argv[])
 				if (a || b) {
 					printf("a: %08x\n", a);
 					printf("b: %08x\n", b);
-					errx(1, "diagnostic abort (has a or b)");
+					//errx(1, "diagnostic abort (has a or b)");
 				}
 			} else {
 				printf("\t\"unk_v5_a\": %u,\n", a);
@@ -547,18 +584,7 @@ int main(int argc, char *argv[])
 			if (!is_json) {
 				printf("\tsubsys #%d:\n", subsys);
 				printf("\t\tsubsysFlags: %04x\n", subsysFlags);
-				if (subsysFlags & 0x0002) {
-					printf("\t\tdefault\n");
-				}
-				if (subsysFlags & 0x0400) {
-					printf("\t\tpatch\n");
-				}
-				if (~subsysFlags & 0x0800) {
-					printf("\t\tminiroot\n");
-				}
-				if (subsysFlags & 0x8000) {
-					printf("\t\toverlays (see 'b' attribute)\n");
-				}
+				decodeFlags(subsysFlags, "\t\t");
 				printf("\t\tsubsysName: '%s'\n", subsysName);
 				printf("\t\tsubsysId: '%s'\n", subsysId);
 				printf("\t\tsubsysExpr: '%s'\n", subsysExpr);
@@ -667,6 +693,52 @@ int main(int argc, char *argv[])
 	if (is_json) {
 		printf("}\n");
 	}
+
+}
+
+int main(int argc, char *argv[])
+{
+	char *filename = NULL;
+	int rc;
+	
+	while ((rc = getopt(argc, argv, "f:jV")) != -1)
+		switch (rc) {
+		case 'f':
+			if (filename)
+				usage();
+			filename = optarg;
+			break;
+		case 'j':
+			if (is_json)
+				usage();
+			is_json = 1;
+			break;
+		case 'V':
+			fprintf(stderr, "%s\n", PROG_EMBLEM);
+			exit(EXIT_SUCCESS);
+			break;
+		default:
+			usage();
+		}
+	argc -= optind;
+	argv += optind;
+
+	if (*argv != NULL) {
+		filename = *argv;
+	} else {
+		tryhelp("must specify product file");
+	}
+
+	struct MappedFile_s m = MappedFile_Open(filename, false);
+	if (!m.data) err(1, "couldn't open file '%s' for reading", filename);
+	ptr = ptr_src = m.data;
+
+	char *out = NULL;
+	size_t out_len = 0;
+
+	rc = pd_analyze(m.data, m.size, &out, &out_len);
+
+	fwrite(out, out_len, 1, stdout);
 
 	MappedFile_Close(m);
 	m.data = NULL;
