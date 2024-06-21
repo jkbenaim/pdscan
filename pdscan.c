@@ -11,75 +11,123 @@
 #include <unistd.h>
 
 #include "escape.h"
-#include "mapfile.h"
+#include "pdscan.h"
 #include "version.h"
 
-#define ARRAY_LENGTH(x) (sizeof(x)/sizeof(*x))
-
-extern char *__progname;
-static void vtryhelp(const char *fmt, va_list args);
-static void tryhelp(const char *fmt, ...);
-static void usage(void);
-
-uint8_t *ptr_src = NULL;
-uint8_t *ptr = NULL;
-
-int is_json = 0;
-
-off_t getOffset()
+__attribute__((nonnull (1, 2)))
+int _vappend(struct pdscan_ctx_s *ctx, const char *fmt, va_list ap)
 {
-	return ptr - ptr_src;
+	__label__ out_error;
+	int rc;
+	size_t len;
+	va_list ap_copy;
+	va_copy(ap_copy, ap);
+
+	/* Get length of formatted string. */
+	/* After this use of 'ap', it cannot be used again. */
+	rc = vsnprintf(NULL, 0, fmt, ap);
+	if (rc < 0)
+		goto out_error;
+	len = rc;
+
+	/* Verify available storage. */
+	while (ctx->bufsize < (ctx->bufused + len + (size_t)1)) {
+		/* Not enough storage, so resize. */
+		const size_t increment = 128*1024;
+		char *newbuf = NULL;
+		newbuf = realloc(ctx->buf, ctx->bufsize + increment);
+		if (!newbuf)
+			goto out_error;
+		ctx->buf = newbuf;
+		ctx->bufsize += increment;
+		ctx->bufcur = ctx->buf + ctx->bufused;
+	}
+
+	/* Write. */
+	rc = vsnprintf(ctx->bufcur, (ctx->bufsize - ctx->bufused), fmt, ap_copy);
+	if (rc < 0)
+		goto out_error;
+
+	/* Adjust bufused. */
+	ctx->bufused += len;
+	ctx->bufcur += len;
+
+	va_end(ap_copy);
+	return 0;
+
+out_error:
+	va_end(ap_copy);
+	return -1;
 }
 
-uint16_t getShort()
+__attribute__((nonnull (1, 2)))
+int _append(struct pdscan_ctx_s *ctx, const char *fmt, ...)
+{
+	int rc;
+	va_list ap;
+	va_start(ap, fmt);
+	rc = _vappend(ctx, fmt, ap);
+	va_end(ap);
+	if (rc)
+		err(1, "asdf");
+	return rc;
+}
+
+#define _a(fmt, ...) _append(ctx, fmt, ##__VA_ARGS__)
+
+__attribute__((nonnull (1)))
+uint16_t getShort(struct pdscan_ctx_s *ctx)
 {
 	uint16_t out = 0;
-	out += *ptr++;
+	out += *(ctx->ptr)++;
 	out <<= 8;
-	out += *ptr++;
+	out += *(ctx->ptr)++;
 	return out;
 }
 
-uint32_t getInt()
+__attribute__((nonnull (1)))
+uint32_t getInt(struct pdscan_ctx_s *ctx)
 {
 	uint32_t out = 0;
-	out = getShort();
+	out = getShort(ctx);
 	out <<= 16;
-	out += getShort();
+	out += getShort(ctx);
 	return out;
 }
-	
-char *getCstring()
+
+__attribute__((nonnull (1)))
+char *getCstring(struct pdscan_ctx_s *ctx)
 {
 	char *out = NULL;
 	char *out2 = NULL;
 	size_t len;
-	if (!ptr) errx(1, "called getCstring with ptr=NULL");
-	len = strlen((char *)ptr);
+	if (!ctx->ptr) errx(1, "called getCstring with ptr=NULL");
+	len = strlen((char *)ctx->ptr);
 	out = malloc(len + 1);
 	if (!out) err(1, "in malloc");
-	strncpy(out, (char *)ptr, len);
+	strncpy(out, (char *)ctx->ptr, len);
 	out[len] = '\0';
-	ptr += len;
-	ptr++;
+	ctx->ptr += len;
+	ctx->ptr++;
 	out2 = escape_json(out);
 	free(out);
 	return out2;
 }
 
-char *getString()
+__attribute__((nonnull (1)))
+char *getString(struct pdscan_ctx_s *ctx)
 {
 	char *out = NULL;
 	char *out2 = NULL;
 	size_t len = 0;
-	len = getShort();
+	len = getShort(ctx);
 	out = malloc(len + 1);
 	if (!out) err(1, "in malloc");
-	memcpy(out, ptr, len);
+	memcpy(out, ctx->ptr, len);
 	out[len] = '\0';
-	ptr += len;
+	ctx->ptr += len;
 	for (size_t i = 0; i < len; i++) {
-		if (!is_json) {
+		if (!ctx->is_json) {
 			if (out[i] == '\x01') {
 				out[i] = '^';
 			}
@@ -93,11 +141,12 @@ char *getString()
 	return out2;
 }
 
-char *getTriplet()
+__attribute__((nonnull (1)))
+char *getTriplet(struct pdscan_ctx_s *ctx)
 {
-	char *a1 = getString();
-	char *a2 = getString();
-	char *a3 = getString();
+	char *a1 = getString(ctx);
+	char *a2 = getString(ctx);
+	char *a3 = getString(ctx);
 	char *triplet = NULL;
 	int rc;
 	rc = asprintf(&triplet, "%s.%s.%s", a1, a2, a3);
@@ -108,14 +157,15 @@ char *getTriplet()
 	return triplet;
 }
 
-char *getMatcher(const char *prefix)
+__attribute__((nonnull (1)))
+char *getMatcher(struct pdscan_ctx_s *ctx, const char *prefix)
 {
 	// a matcher is 3 strings and 2 ints
 	char *out = NULL;
 	int rc;
-	char *triplet = getTriplet();
-	int32_t from = getInt();
-	int32_t to = getInt();
+	char *triplet = getTriplet(ctx);
+	int32_t from = getInt(ctx);
+	int32_t to = getInt(ctx);
 	const char *my_prefix;
 	if (!prefix) {
 		my_prefix = "";
@@ -125,7 +175,7 @@ char *getMatcher(const char *prefix)
 	} else {
 		my_prefix = prefix;
 	}
-	if (!is_json) {
+	if (!ctx->is_json) {
 		if (to == 2147483647u) {
 			rc = asprintf(&out, "%s'%s' %d maxint", my_prefix, triplet, from);
 		} else {
@@ -143,287 +193,311 @@ char *getMatcher(const char *prefix)
 	return out;
 }
 
-void getRules(const char *label)
+__attribute__((nonnull (1)))
+void getRules(struct pdscan_ctx_s *ctx, const char *label)
 {
-	uint16_t rulesCount = getShort();
-	if (!is_json) {
-		printf("\t\trulesCount: %d\n", rulesCount);
+	uint16_t rulesCount = getShort(ctx);
+	if (!ctx->is_json) {
+		_a("\t\trulesCount: %d\n", rulesCount);
 	} else {
 		if (rulesCount) {
-			printf("\t\t\"%s\": [\n", label);
+			_a("\"%s\": [\n", label);
 		} else {
-			printf("\"%s\": []", label);
+			_a("\"%s\": []", label);
 			return;
 		}
 	}
 	if (rulesCount > 2000) errx(1, "diagnostic abort (too many rules)");
 	for (int rule = 0; rule < rulesCount; rule++) {
 		char *matcher;
-		if (!is_json) {
-			matcher = getMatcher("replaces ");
-			printf("\t\t\t%s\n", matcher);
+		if (!ctx->is_json) {
+			matcher = getMatcher(ctx, "replaces ");
+			_a("\t\t\t%s\n", matcher);
 		} else {
-			matcher = getMatcher("replaces");
+			matcher = getMatcher(ctx, "replaces");
 			if (rule == (rulesCount - 1)) {
-				printf("\t\t\t%s\n", matcher);
+				_a("\t\t\t%s\n", matcher);
 			} else {
-				printf("\t\t\t%s,\n", matcher);
+				_a("\t\t\t%s,\n", matcher);
 			}
 		}
 		free(matcher);
 	}
-	if (is_json) {
-		printf("\t\t]");
+	if (ctx->is_json) {
+		_a("\t\t]");
 	}
 }
 
-void getMachInfo()
+__attribute__((nonnull (1)))
+void getMachInfo(struct pdscan_ctx_s *ctx)
 {
 	// get machine info
-	uint32_t machCount = getInt();
-	if (!is_json) {
-		printf("machCount: %d\n", machCount);
+	uint32_t machCount = getInt(ctx);
+	if (!ctx->is_json) {
+		_a("machCount: %d\n", machCount);
 	} else {
 		if (machCount) {
-			printf("\"mach\": [\n");
+			_a("\"mach\": [\n");
 		} else {
-			printf("\"mach\": [],\n");
+			_a("\"mach\": [],\n");
 			return;
 		}
 	}
 	for (size_t i = 0; i < machCount; i++) {
-		char *m = getString();
-		if (!is_json) {
-			printf("\tmach '%s'\n", m);
+		char *m = getString(ctx);
+		if (!ctx->is_json) {
+			_a("\tmach '%s'\n", m);
 		} else {
 			if (i == (machCount - 1)) {
-				printf("\t\"%s\"\n", m);
+				_a("\t\"%s\"\n", m);
 			} else {
-				printf("\t\"%s\",\n", m);
+				_a("\t\"%s\",\n", m);
 			}
 		}
 		free(m);
 	}
-	if (is_json) {
-		printf("],\n");
+	if (ctx->is_json) {
+		_a("],\n");
 	}
 }
 
-void getPrereqs()
+__attribute__((nonnull (1)))
+void getPrereqs(struct pdscan_ctx_s *ctx)
 {
-	uint16_t prereqSets = getShort();
-	if (!is_json) {
-		printf("\t\tprereq sets: %d\n", prereqSets);
+	uint16_t prereqSets = getShort(ctx);
+	if (!ctx->is_json) {
+		_a("\t\tprereq sets: %d\n", prereqSets);
 	} else {
 		if (prereqSets) {
-			printf("\t\t\"prereqs\": [\n");
+			_a("\t\t\"prereqs\": [\n");
 		} else {
-			printf("\t\t\"prereqs\": []");
+			_a("\t\t\"prereqs\": []");
 			return;
 		}
 	}
 	for (int set = 0; set < prereqSets; set++) {
-		uint16_t prereqsCount = getShort();
-		if (!is_json) {
-			printf("\t\tprereqs: %d (\n", prereqsCount);
+		uint16_t prereqsCount = getShort(ctx);
+		if (!ctx->is_json) {
+			_a("\t\tprereqs: %d (\n", prereqsCount);
 		} else {
-			printf("\t\t\t[\n");
+			_a("\t\t\t[\n");
 		}
 		for (int a = 0; a < prereqsCount; a++) {
-			char *matcher = getMatcher(NULL);
-			if (!is_json) {
-				printf("\t\t\t%s\n", matcher);
+			char *matcher = getMatcher(ctx, NULL);
+			if (!ctx->is_json) {
+				_a("\t\t\t%s\n", matcher);
 			} else {
 				if (a == (prereqsCount - 1)) {
-					printf("\t\t\t\t%s%s", matcher, (a == (prereqsCount - 1))?"":",");
+					_a("\t\t\t\t%s%s", matcher, (a == (prereqsCount - 1))?"":",");
 				} else {
-					printf("\t\t\t\t%s%s\n", matcher, (a == (prereqsCount - 1))?"":",");
+					_a("\t\t\t\t%s%s\n", matcher, (a == (prereqsCount - 1))?"":",");
 				}
 			}
 			free(matcher);
 		}
-		if (!is_json) {
-			printf("\t\t)\n");
+		if (!ctx->is_json) {
+			_a("\t\t)\n");
 		} else {
-			printf("\n\t\t\t]%s\n", (set == (prereqSets - 1))?"":",");
+			_a("\n\t\t\t]%s\n", (set == (prereqSets - 1))?"":",");
 		}
 	}
-	if (is_json) {
-		printf("\t\t]");
+	if (ctx->is_json) {
+		_a("\t\t]");
 	}
 }
 
-void getAttrs(const char *prefix)
+__attribute__((nonnull (1)))
+void getAttrs(struct pdscan_ctx_s *ctx, const char *prefix)
 {
-	uint32_t attrs = getInt();
-	if (!is_json) {
-		printf("%sattrs: %d\n", prefix, attrs);
+	uint32_t attrs = getInt(ctx);
+	if (!ctx->is_json) {
+		_a("%sattrs: %d\n", prefix, attrs);
 	} else {
 		if (attrs) {
-			printf("%s\"attrs\": [\n", prefix);
+			_a("%s\"attrs\": [\n", prefix);
 		} else {
-			printf("%s\"attrs\": []", prefix);
+			_a("%s\"attrs\": []", prefix);
 			return;
 		}
 	}
 	for (size_t i = 0; i < attrs; i++) {
-		char *attr = getString();
-		if (!is_json) {
-			printf("%s\t'%s'\n", prefix, attr);
+		char *attr = getString(ctx);
+		if (!ctx->is_json) {
+			_a("%s\t'%s'\n", prefix, attr);
 		} else {
 			if (i == (attrs - 1)) {
-				printf("%s\t\"%s\"\n", prefix, attr);
+				_a("%s\t\"%s\"\n", prefix, attr);
 			} else {
-				printf("%s\t\"%s\",\n", prefix, attr);
+				_a("%s\t\"%s\",\n", prefix, attr);
 			}
 		}
 		free(attr);
 	}
-	if (is_json) {
-		printf("%s]", prefix);
+	if (ctx->is_json) {
+		_a("%s]", prefix);
 	}
 }
 
-void getUpdates()
+__attribute__((nonnull (1)))
+void getUpdates(struct pdscan_ctx_s *ctx)
 {
-	uint16_t updatesCount = getShort();
-	if (!is_json) {
-		printf("\t\tupdatesCount: %d\n", updatesCount);
+	uint16_t updatesCount = getShort(ctx);
+	if (!ctx->is_json) {
+		_a("\t\tupdatesCount: %d\n", updatesCount);
 	} else {
 		if (updatesCount) {
-			printf("\t\t\"updates\": [\n");
+			_a("\t\t\"updates\": [\n");
 		} else {
-			printf("\t\t\"updates\": []");
+			_a("\t\t\"updates\": []");
 			return;
 		}
 	}
 	for (int i = 0; i < updatesCount; i++) {
 		char *matcher;
-		if (!is_json) {
-			matcher = getMatcher("updates ");
+		if (!ctx->is_json) {
+			matcher = getMatcher(ctx, "updates ");
 		} else {
-			matcher = getMatcher(NULL);
+			matcher = getMatcher(ctx, NULL);
 		}
-		if (!is_json) {
-			printf("\t\t\t%s\n", matcher);
+		if (!ctx->is_json) {
+			_a("\t\t\t%s\n", matcher);
 		} else {
 			if (i == (updatesCount - 1)) {
-				printf("\t\t\t%s\n", matcher);
+				_a("\t\t\t%s\n", matcher);
 			} else {
-				printf("\t\t\t%s,\n", matcher);
+				_a("\t\t\t%s,\n", matcher);
 			}
 		}
 		free(matcher);
 	}
-	if (is_json) {
-		printf("\t\t]");
+	if (ctx->is_json) {
+		_a("\t\t]");
 	}
 }
 
-void decodeFlags(uint16_t subsysFlags, const char *prefix)
+void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *prefix)
 {
 	if (subsysFlags & 0x0001) {
-		printf("%s", prefix);
-		printf("required\n");
+		_a("%s", prefix);
+		_a("required\n");
 	}
 	if (subsysFlags & 0x0002) {
-		printf("%s", prefix);
-		printf("default\n");
+		_a("%s", prefix);
+		_a("default\n");
 	}
 	if (subsysFlags & 0x0004) {
-		printf("%s", prefix);
-		printf("unknown flag 0004\n");
+		_a("%s", prefix);
+		_a("unknown flag 0004\n");
 	}
 	if (subsysFlags & 0x0008) {
-		printf("%s", prefix);
-		printf("unknown flag 0008\n");
+		_a("%s", prefix);
+		_a("unknown flag 0008\n");
 	}
 	if (~subsysFlags & 0x0010) {
-		printf("%s", prefix);
-		printf("unknown flag 0010 is not set\n");
+		_a("%s", prefix);
+		_a("unknown flag 0010 is not set\n");
 	}
 	if (subsysFlags & 0x0020) {
-		printf("%s", prefix);
-		printf("was deleted\n");
+		_a("%s", prefix);
+		_a("was deleted\n");
 	}
 	if (~subsysFlags & 0x0040) {
-		printf("%s", prefix);
-		printf("unknown flag 0040 is not set\n");
+		_a("%s", prefix);
+		_a("unknown flag 0040 is not set\n");
 	}
 	if (subsysFlags & 0x0080) {
-		printf("%s", prefix);
-		printf("is installed\n");
+		_a("%s", prefix);
+		_a("is installed\n");
 	}
 	if (subsysFlags & 0x0100) {
-		printf("%s", prefix);
-		printf("unknown flag 0100\n");
+		_a("%s", prefix);
+		_a("unknown flag 0100\n");
 	}
 	if (subsysFlags & 0x0200) {
-		printf("%s", prefix);
-		printf("unknown flag 0200\n");
+		_a("%s", prefix);
+		_a("unknown flag 0200\n");
 	}
 	if (subsysFlags & 0x0400) {
-		printf("%s", prefix);
-		printf("patch\n");
+		_a("%s", prefix);
+		_a("patch\n");
 	}
 	if (~subsysFlags & 0x0800) {
-		printf("%s", prefix);
-		printf("miniroot\n");
+		_a("%s", prefix);
+		_a("miniroot\n");
 	}
 	if (subsysFlags & 0x1000) {
-		printf("%s", prefix);
-		printf("unknown flag 1000\n");
+		_a("%s", prefix);
+		_a("unknown flag 1000\n");
 	}
 	if (subsysFlags & 0x2000) {
-		printf("%s", prefix);
-		printf("clientonly\n");
+		_a("%s", prefix);
+		_a("clientonly\n");
 	}
 	if (subsysFlags & 0x4000) {
-		printf("%s", prefix);
-		printf("unknown flag 4000\n");
+		_a("%s", prefix);
+		_a("unknown flag 4000\n");
 	}
 	if (subsysFlags & 0x8000) {
-		printf("%s", prefix);
-		printf("overlays (see 'b' attribute)\n");
+		_a("%s", prefix);
+		_a("overlays (see 'b' attribute)\n");
 	}
 }
 
-int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len)
+__attribute__((nonnull (1)))
+struct pdscan_ctx_s *new_pdscan_ctx(void *pd, size_t pd_len, bool is_json)
 {
+	(void) pd_len;
+	struct pdscan_ctx_s *out = NULL;
+	out = malloc(sizeof(*out));
+	if (!out) err(1, "in malloc");
+	out->ptr = out->ptr_src = (uint8_t *)pd;
+	out->is_json = is_json;
+	out->buf = NULL;
+	out->bufsize = 0;
+	out->bufused = 0;
+	return out;
+}
+
+__attribute__((nonnull (1, 3, 4)))
+int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len, bool is_json)
+{
+	struct pdscan_ctx_s *ctx = NULL;
+	ctx = new_pdscan_ctx(pd, pd_len, is_json);
+
 	if (is_json) {
-		printf("{\n");
+		_a("{\n");
 	}
 
 	// product
 	char *prodId = NULL;
-	if ((ptr[0] == 'p') || (ptr[1] == 'd')) {
-                prodId = getCstring();
+	if ((ctx->ptr[0] == 'p') || (ctx->ptr[1] == 'd')) {
+                prodId = getCstring(ctx);
 		if (is_json) {
-			printf("\"prodId\": \"%s\",\n", prodId);
+			_a("\"prodId\": \"%s\",\n", prodId);
 		} else {
-	                printf("prodId: present, '%s'\n", prodId);
+	                _a("prodId: present, '%s'\n", prodId);
 		}
 	} else {
 		if (!is_json) {
-	                printf("prodId: not present\n");
+	                _a("prodId: not present\n");
 		}
         }
 
-#if 0
-	uint16_t magic = getShort();
+#if 1
+	uint16_t magic = getShort(ctx);
 	if (!is_json) {
-		printf("magic: %04x %s\n", magic, (magic==1988)?"(ok)":"(BAD)");
+		_a("magic: %04x %s\n", magic, (magic==1988)?"(ok)":"(BAD)");
 	} else {
-		printf("\"magic\": %u,\n", magic);
+		_a("\"magic\": %u,\n", magic);
 	}
         if (magic != 1988) return 1;
-	uint16_t noOfProds = getShort();
+	uint16_t noOfProds = getShort(ctx);
 	if (!is_json) {
-		printf("noOfProds: %04x %s\n", noOfProds, (noOfProds>=1)?"(ok)":"(BAD)");
+		_a("noOfProds: %04x %s\n", noOfProds, (noOfProds>=1)?"(ok)":"(BAD)");
 	}
 
 	if (is_json && noOfProds) {
-		printf("\"products\": [\n");
+		_a("\"products\": [\n");
 	}
 
 #else
@@ -432,18 +506,18 @@ int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len)
 #endif
 	for (unsigned prodNum = 0; prodNum < noOfProds; prodNum++) {
 	// root
-	uint16_t prodMagic = getShort();
+	uint16_t prodMagic = getShort(ctx);
 	if (!is_json) {
-		printf("prodMagic: %04x %s\n", prodMagic, (prodMagic==1987)?"(ok)":"(BAD)");
+		_a("prodMagic: %04x %s\n", prodMagic, (prodMagic==1987)?"(ok)":"(BAD)");
 	} else {
-		printf("{\n");
+		_a("{\n");
 	}
         if (prodMagic != 1987) return 1;
-	uint16_t prodFormat = getShort();
+	uint16_t prodFormat = getShort(ctx);
 	if (is_json) {
-		printf("\"prodFormat\": %u,\n", prodFormat);
+		_a("\"prodFormat\": %u,\n", prodFormat);
 	} else {
-		printf("prodFormat: %04x\n", prodFormat);
+		_a("prodFormat: %04x\n", prodFormat);
 	}
 	switch (prodFormat) {
 	case 5 ... 9:
@@ -452,231 +526,234 @@ int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len)
 		errx(1, "bad prodFormat: %d not between 5 and 9 inclusive", prodFormat);
 	}
 
-	char *shortName = getString();
-	char *longName = getString();
-	uint16_t prodFlags = getShort();
+	char *shortName = getString(ctx);
+	char *longName = getString(ctx);
+	uint16_t prodFlags = getShort(ctx);
 	if (!is_json) {
-		printf("shortName: '%s'\n", shortName);
-		printf("longName:  '%s'\n", longName);
-		printf("prodFlags: %04x\n", prodFlags);
+		_a("shortName: '%s'\n", shortName);
+		_a("longName:  '%s'\n", longName);
+		_a("prodFlags: %04x\n", prodFlags);
 	} else {
-		printf("\"shortName\": \"%s\",\n", shortName);
-		printf("\"longName\": \"%s\",\n", longName);
-		printf("\"prodFlags\": %u,\n", prodFlags);
+		_a("\"shortName\": \"%s\",\n", shortName);
+		_a("\"longName\": \"%s\",\n", longName);
+		_a("\"prodFlags\": %u,\n", prodFlags);
 	}
 	if (prodFormat >= 5) {
-		time_t prodDateTime = getInt();
+		time_t prodDateTime = getInt(ctx);
 		if (!is_json) {
-			printf("datetime: %s", ctime(&prodDateTime));
+			_a("datetime: %s", ctime(&prodDateTime));
 		} else {
-			printf("\"datetime\": %lu,\n", prodDateTime);
+			_a("\"datetime\": %lu,\n", prodDateTime);
 		}
 	}
 
 	if (prodFormat >= 5) {
-		char *prodIdk = getString();
+		char *prodIdk = getString(ctx);
 		if (!is_json) {
-			printf("prodIdk: '%s'\n", prodIdk);
+			_a("prodIdk: '%s'\n", prodIdk);
 		} else {
-			printf("\"prodIdk\": \"%s\",\n", prodIdk);
+			_a("\"prodIdk\": \"%s\",\n", prodIdk);
 		}
 		free(prodIdk);
 	}
 
 	if (prodFormat == 7) {
-		getMachInfo();
+		getMachInfo(ctx);
 	}
 
 	if (prodFormat >= 8) {
-		getAttrs("");
+		getAttrs(ctx, "");
 		if (is_json) {
-			printf(",\n");
+			_a(",\n");
 		}
 	}
 
-	uint16_t imageCount = getShort();
+	uint16_t imageCount = getShort(ctx);
 	if (!is_json) {
-		printf("imageCount: %04x\n", imageCount);
+		_a("imageCount: %04x\n", imageCount);
 	} else {
-		printf("\"images\": [\n");
+		_a("\"images\": [\n");
 	}
 
 	for (int image = 0; image < imageCount; image++) {
-		uint16_t imageFlags = getShort();
-		char *imageName = getString();
-		char *imageId = getString();
-		uint16_t imageFormat = getShort();
+		uint16_t imageFlags = getShort(ctx);
+		char *imageName = getString(ctx);
+		char *imageId = getString(ctx);
+		uint16_t imageFormat = getShort(ctx);
 		if (!is_json) {
-			printf("product #%d image #%d:\n", prodNum, image);
-			printf("\timageFlags: %04x\n", imageFlags);
-			printf("\timageName: '%s'\n", imageName);
-			printf("\timageId: '%s'\n", imageId);
-			printf("\timageFormat: %04x\n", imageFormat);
+			_a("product #%d image #%d:\n", prodNum, image);
+			_a("\timageFlags: %04x\n", imageFlags);
+			_a("\timageName: '%s'\n", imageName);
+			_a("\timageId: '%s'\n", imageId);
+			_a("\timageFormat: %04x\n", imageFormat);
 		} else {
-			printf("{\n");
-			printf("\t\"imageFlags\": %u,\n", imageFlags);
-			printf("\t\"imageName\": \"%s\",\n", imageName);
-			printf("\t\"imageId\": \"%s\",\n", imageId);
-			printf("\t\"imageFormat\": %u,\n", imageFormat);
+			_a("{\n");
+			_a("\t\"imageFlags\": %u,\n", imageFlags);
+			_a("\t\"imageName\": \"%s\",\n", imageName);
+			_a("\t\"imageId\": \"%s\",\n", imageId);
+			_a("\t\"imageFormat\": %u,\n", imageFormat);
 		}
 
 		uint16_t imageOrder = 0;
 		if (prodFormat >= 5) {
-			imageOrder = getShort();
+			imageOrder = getShort(ctx);
 		}
 		if (!is_json) {
-			printf("\timageOrder: %04x (%u)\n", imageOrder, imageOrder);
+			_a("\timageOrder: %04x (%u)\n", imageOrder, imageOrder);
 		} else {
-			printf("\t\"imageOrder\": %u,\n", imageOrder);
+			_a("\t\"imageOrder\": %u,\n", imageOrder);
 		}
 
-		uint32_t imageVersion = getInt();
+		uint32_t imageVersion = getInt(ctx);
 		if (!is_json) {
-			printf("\timageVersion: %u\n", imageVersion);
+			_a("\timageVersion: %u\n", imageVersion);
 		} else {
-			printf("\t\"imageVersion\": %u,\n", imageVersion);
+			_a("\t\"imageVersion\": %u,\n", imageVersion);
 		}
 
 		if (prodFormat == 5) {
-			uint32_t a = getInt();
-			uint32_t b = getInt();
+			uint32_t a = getInt(ctx);
+			uint32_t b = getInt(ctx);
 			if (!is_json) {
 				if (a || b) {
-					printf("a: %08x\n", a);
-					printf("b: %08x\n", b);
+					_a("a: %08x\n", a);
+					_a("b: %08x\n", b);
 					//errx(1, "diagnostic abort (has a or b)");
 				}
 			} else {
-				printf("\t\"unk_v5_a\": %u,\n", a);
-				printf("\t\"unk_v5_b\": %u,\n", b);
+				_a("\t\"unk_v5_a\": %u,\n", a);
+				_a("\t\"unk_v5_b\": %u,\n", b);
 			}
 		}
 
-		char *derivedFrom = getString();
+		char *derivedFrom = getString(ctx);
 		if (!is_json) {
 			if (strlen(derivedFrom)) {
-				printf("\tderivedFrom: '%s'\n", derivedFrom);
+				_a("\tderivedFrom: '%s'\n", derivedFrom);
 			}
 		} else {
-			printf("\t\"derivedFrom\": \"%s\",\n", derivedFrom);
+			_a("\t\"derivedFrom\": \"%s\",\n", derivedFrom);
 		}
 		free(derivedFrom);
 		if (prodFormat >= 8) {
-			getAttrs("\t");
+			getAttrs(ctx, "\t");
 			if (is_json) {
-				printf(",\n");
+				_a(",\n");
 			}
 		}
 
-		uint16_t subsysCount = getShort();
+		uint16_t subsysCount = getShort(ctx);
 		if (!is_json) {
-			printf("\tsubsysCount: %04x\n", subsysCount);
+			_a("\tsubsysCount: %04x\n", subsysCount);
 		} else {
-			printf("\t\"subsystems\": [\n");
+			_a("\t\"subsystems\": [\n");
 		}
 
 		for(int subsys = 0; subsys < subsysCount; subsys++) {
-			uint16_t subsysFlags = getShort();
-			char *subsysName = getString();
-			char *subsysId = getString();
-			char *subsysExpr = getString();
-			time_t subsysInstallDate = getInt();
+			uint16_t subsysFlags = getShort(ctx);
+			char *subsysName = getString(ctx);
+			char *subsysId = getString(ctx);
+			char *subsysExpr = getString(ctx);
+			time_t subsysInstallDate = getInt(ctx);
 			if (!is_json) {
-				printf("\tsubsys #%d:\n", subsys);
-				printf("\t\tsubsysFlags: %04x\n", subsysFlags);
-				decodeFlags(subsysFlags, "\t\t");
-				printf("\t\tsubsysName: '%s'\n", subsysName);
-				printf("\t\tsubsysId: '%s'\n", subsysId);
-				printf("\t\tsubsysExpr: '%s'\n", subsysExpr);
+				_a("\tsubsys #%d:\n", subsys);
+				_a("\t\tsubsysFlags: %04x\n", subsysFlags);
+				decodeFlags(ctx, subsysFlags, "\t\t");
+				_a("\t\tsubsysName: '%s'\n", subsysName);
+				_a("\t\tsubsysId: '%s'\n", subsysId);
+				_a("\t\tsubsysExpr: '%s'\n", subsysExpr);
 				if (subsysFlags & 0x0080) {
-					printf("\t\tsubsysInstallDate: %s", ctime(&subsysInstallDate));
+					_a("\t\tsubsysInstallDate: %s", ctime(&subsysInstallDate));
 				}
 			} else {
-				printf("\t\t{\n");
-				printf("\t\t\"subsysFlags\": %u,\n", subsysFlags);
-				printf("\t\t\"subsysName\": \"%s\",\n", subsysName);
-				printf("\t\t\"subsysId\": \"%s\",\n", subsysId);
-				printf("\t\t\"subsysExpr\": \"%s\",\n", subsysExpr);
-				printf("\t\t\"subsysInstallDate\": %lu,\n", subsysInstallDate);
+				_a("\t\t{\n");
+				_a("\t\t\"subsysFlags\": %u,\n", subsysFlags);
+				_a("\t\t\"subsysName\": \"%s\",\n", subsysName);
+				_a("\t\t\"subsysId\": \"%s\",\n", subsysId);
+				_a("\t\t\"subsysExpr\": \"%s\",\n", subsysExpr);
+				_a("\t\t\"subsysInstallDate\": %lu,\n", subsysInstallDate);
 			}
-
-			getRules("rules");
+			
 			if (is_json) {
-				printf(",\n");
+				_a("\t\t");
 			}
-			getPrereqs();
+			getRules(ctx, "rules");
 			if (is_json) {
-				printf(",\n");
+				_a(",\n");
+			}
+			getPrereqs(ctx);
+			if (is_json) {
+				_a(",\n");
 			}
 			free(subsysName);
 			free(subsysId);
 			free(subsysExpr);
 			if (prodFormat >= 5) {
-				char *altName = getString();
+				char *altName = getString(ctx);
 				if (!is_json) {
-					printf("\t\taltName: '%s'\n", altName);
+					_a("\t\taltName: '%s'\n", altName);
 				} else {
-					printf("\t\t\"altName\": \"%s\"", altName);
+					_a("\t\t\"altName\": \"%s\"", altName);
 				}
 				free(altName);
 			}
 			if (prodFormat >= 6) {
 				if (!is_json) {
-					printf("\t\tincompats:\n");
+					_a("\t\tincompats:\n");
 				} else {
-					printf(",\n");
-					printf("\t\t");
+					_a(",\n");
+					_a("\t\t");
 				}
-				getRules("incompats");
+				getRules(ctx, "incompats");
 			}
 			if (prodFormat >= 8) {
 				if (is_json) {
-					printf(",\n");
+					_a(",\n");
 				}
-				getAttrs("\t\t");
+				getAttrs(ctx, "\t\t");
 			}
 			if (prodFormat >= 9) {
 				if (is_json) {
-					printf(",\n");
+					_a(",\n");
 				}
-				getUpdates();
+				getUpdates(ctx);
 			}
 
 			/* close subsystem object */
 			if (is_json) {
 				if (subsys == (subsysCount - 1)) {
-					printf("\n\t\t}\n");
+					_a("\n\t\t}\n");
 				} else {
-					printf("\n\t\t},\n");
+					_a("\n\t\t},\n");
 				}
 			}
 		}
 		/* close subsystems array */
 		if (is_json) {
-			printf("\t]\n");
+			_a("\t]\n");
 		}
 
 		free(imageName);
 		free(imageId);
 		/* close image object */
 		if (is_json) {
-			if ((image == (imageCount - 1))) {
-				printf("}\n");
+			if (image == (imageCount - 1)) {
+				_a("}\n");
 			} else {
-				printf("},\n");
+				_a("},\n");
 			}
 		}
 	}
 	/* close images array */
 	if (is_json) {
-		printf("]\n");
+		_a("]\n");
 	}
 	/* close product object */
 	if (is_json) {
-		if (prodNum == (noOfProds - 1)) {
-			printf("}\n");
+		if ((prodNum + 1) == (unsigned)noOfProds) {
+			_a("}\n");
 		} else {
-			printf("},\n");
+			_a("},\n");
 		}
 	}
 
@@ -687,95 +764,18 @@ int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len)
 	free(prodId);
 	/* close products array */
 	if (is_json) {
-		printf("]\n");
+		_a("]\n");
 	}
 	/* close root object */
 	if (is_json) {
-		printf("}\n");
+		_a("}\n");
 	}
 
+	*analysis = ctx->buf;
+	*analysis_len = ctx->bufused;
+
+	free(ctx);
+
+	return 0;
 }
 
-int main(int argc, char *argv[])
-{
-	char *filename = NULL;
-	int rc;
-	
-	while ((rc = getopt(argc, argv, "f:jV")) != -1)
-		switch (rc) {
-		case 'f':
-			if (filename)
-				usage();
-			filename = optarg;
-			break;
-		case 'j':
-			if (is_json)
-				usage();
-			is_json = 1;
-			break;
-		case 'V':
-			fprintf(stderr, "%s\n", PROG_EMBLEM);
-			exit(EXIT_SUCCESS);
-			break;
-		default:
-			usage();
-		}
-	argc -= optind;
-	argv += optind;
-
-	if (*argv != NULL) {
-		filename = *argv;
-	} else {
-		tryhelp("must specify product file");
-	}
-
-	struct MappedFile_s m = MappedFile_Open(filename, false);
-	if (!m.data) err(1, "couldn't open file '%s' for reading", filename);
-	ptr = ptr_src = m.data;
-
-	char *out = NULL;
-	size_t out_len = 0;
-
-	rc = pd_analyze(m.data, m.size, &out, &out_len);
-
-	fwrite(out, out_len, 1, stdout);
-
-	MappedFile_Close(m);
-	m.data = NULL;
-	return EXIT_SUCCESS;
-}
-
-static void vtryhelp(const char *fmt, va_list args)
-{
-	if (fmt) {
-		fprintf(stderr, "%s: ", __progname);
-		vfprintf(stderr, fmt, args);
-		fprintf(stderr, "\n");
-	}
-	fprintf(stderr, "Try `%s -h' for more information.\n", __progname);
-	exit(EXIT_FAILURE);
-}
-
-static void tryhelp(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vtryhelp(fmt, ap);
-	va_end(ap);
-}
-
-static void usage(void)
-{
-	(void)fprintf(stderr,
-"Usage: %s [OPTION] FILE\n"
-"Describe the IRIX software package given its product description file.\n"
-"\n"
-"  -h       print this help text\n"
-"  -j       output in JSON format\n"
-"  -V       print program version\n"
-"\n"
-"Please report any bugs to <jkbenaim@gmail.com>.\n"
-,		__progname
-	);
-	exit(EXIT_FAILURE);
-}

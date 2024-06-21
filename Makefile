@@ -1,9 +1,9 @@
 target  ?= pdscan
-objects := escape.o mapfile.o pdscan.o
+objects := escape.o main.o mapfile.o pdscan.o
 
 #libs:=sqlite3
 
-#EXTRAS += -fsanitize=bounds -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall -flto -Wextra
+#EXTRAS += -fsanitize=bounds -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -Wall -Wextra
 
 ifdef libs
 LDLIBS  += $(shell pkg-config --libs   ${libs})
