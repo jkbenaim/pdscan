@@ -1,10 +1,11 @@
 '\" -*- coding: UTF-8 -*-
-.TH pdscan 1 "July 2023" "pdscan"
+.TH pdscan 1 "June 2024" "pdscan"
 .SH NAME
 pdscan \- describe IRIX software products
 .SH SYNOPSIS
 .nf
-\fBpdscan\fR \fB\-f\fR \fIpdfile\fR
+\fBpdscan\fR [\fI\-j\fR] \fIpdfile\fR
+\fBpdscan\fR [\fI\-h\fR|\fI-V\fR]
 .fi
 .SH DESCRIPTION
 \fIpdscan\fR will describe an IRIX software package, given its product
@@ -31,13 +32,23 @@ package.
 These are containers for the actual data of the package. The package may
 contain multiple "images", such as "man" or "data", which are in separate
 containers and may be installed separately.
+.SH OPTIONS
+.TP
+.B \-h
+Print help text.
+.TP
+.B \-j
+Output in JSON format.
+.TP
+.B \-V
+Print program version.
 .SH BUGS
 \fBpdscan\fR understands product description versions 5 through 9. Other
 versions might exist, but they have not been observed by the author.
 .SH BUG REPORTS
 Report bugs to <jkbenaim@gmail.com>.
 .SH COPYRIGHT
-Copyright \(co 2023 Jason Benaim.
+Copyright \(co 2023-2024 Jason Benaim.
 .br
 .na
 Licensed under the Apache License, version 2.0.

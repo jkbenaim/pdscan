@@ -4,7 +4,8 @@ NAME
        pdscan - describe IRIX software products
 
 SYNOPSIS
-       pdscan -f pdfile
+       pdscan [-j] pdfile
+       pdscan [-h|-V]
 
 DESCRIPTION
        pdscan will describe an IRIX software package, given its product
@@ -33,6 +34,13 @@ DESCRIPTION
 		     such as "man" or "data", which are in separate
 		     containers and may be installed separately.
 
+OPTIONS
+       -h     Print help text.
+
+       -j     Output in JSON format.
+
+       -V     Print program version.
+
 BUGS
        pdscan understands product description versions 5 through 9. Other
        versions might exist, but they have not been observed by the author.
@@ -41,8 +49,8 @@ BUG REPORTS
        Report bugs to <jkbenaim@gmail.com>.
 
 COPYRIGHT
-       Copyright © 2023 Jason Benaim.
+       Copyright © 2023-2024 Jason Benaim.
        Licensed under the Apache License, version 2.0.
        <https://www.apache.org/licenses/LICENSE-2.0>
 
-pdscan				 July 2023			  pdscan(1)
+pdscan				 June 2024			  pdscan(1)
