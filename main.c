@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
 
 	rc = pd_analyze(m.data, m.size, &out, &out_len, is_json);
 
-	if (rc && out) {
+	if (!rc && out) {
 		fwrite(out, out_len, 1, stdout);
 	} else {
 		printf("error parsing pdfile\n");
