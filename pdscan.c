@@ -377,38 +377,54 @@ void getUpdates(struct pdscan_ctx_s *ctx)
 
 void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *prefix)
 {
+	/* "required", formerly called "main" */
 	if (subsysFlags & 0x0001) {
 		_a("%s", prefix);
 		_a("required\n");
 	}
+
+	/* "default" */
 	if (subsysFlags & 0x0002) {
 		_a("%s", prefix);
 		_a("default\n");
 	}
+
+	/* "select" */
 	if (subsysFlags & 0x0004) {
 		_a("%s", prefix);
-		_a("unknown flag 0004\n");
+		_a("select\n");
 	}
+
+	/* "reject" */
 	if (subsysFlags & 0x0008) {
 		_a("%s", prefix);
-		_a("unknown flag 0008\n");
+		_a("reject\n");
 	}
+
+	/* "present" */
 	if (~subsysFlags & 0x0010) {
 		_a("%s", prefix);
-		_a("unknown flag 0010 is not set\n");
+		_a("not present\n");
 	}
+
+	/* "deleted" */
 	if (subsysFlags & 0x0020) {
 		_a("%s", prefix);
 		_a("was deleted\n");
 	}
+
+	/* "add" */
 	if (~subsysFlags & 0x0040) {
 		_a("%s", prefix);
-		_a("unknown flag 0040 is not set\n");
+		_a("not add\n");
 	}
+
+	/* "installed" */
 	if (subsysFlags & 0x0080) {
 		_a("%s", prefix);
 		_a("is installed\n");
 	}
+
 	if (subsysFlags & 0x0100) {
 		_a("%s", prefix);
 		_a("unknown flag 0100\n");
@@ -423,7 +439,7 @@ void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *pre
 	}
 	if (~subsysFlags & 0x0800) {
 		_a("%s", prefix);
-		_a("miniroot\n");
+		_a("miniroot\n");	/* antonym is "inplace" */
 	}
 	if (subsysFlags & 0x1000) {
 		_a("%s", prefix);
@@ -533,6 +549,7 @@ int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len, b
 		_a("shortName: '%s'\n", shortName);
 		_a("longName:  '%s'\n", longName);
 		_a("prodFlags: %04x\n", prodFlags);
+		decodeFlags(ctx, prodFlags, "");
 	} else {
 		_a("\"shortName\": \"%s\",\n", shortName);
 		_a("\"longName\": \"%s\",\n", longName);
@@ -583,6 +600,7 @@ int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len, b
 		if (!is_json) {
 			_a("product #%d image #%d:\n", prodNum, image);
 			_a("\timageFlags: %04x\n", imageFlags);
+			decodeFlags(ctx, imageFlags, "\t");
 			_a("\timageName: '%s'\n", imageName);
 			_a("\timageId: '%s'\n", imageId);
 			_a("\timageFormat: %04x\n", imageFormat);
