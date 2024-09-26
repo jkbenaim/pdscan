@@ -377,10 +377,10 @@ void getUpdates(struct pdscan_ctx_s *ctx)
 
 void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *prefix)
 {
-	/* "required", formerly called "main" */
+	/* "required" */
 	if (subsysFlags & 0x0001) {
 		_a("%s", prefix);
-		_a("required\n");
+		_a("required (formerly called \"main\")\n");
 	}
 
 	/* "default" */
@@ -402,9 +402,9 @@ void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *pre
 	}
 
 	/* "present" */
-	if (~subsysFlags & 0x0010) {
+	if (subsysFlags & 0x0010) {
 		_a("%s", prefix);
-		_a("not present\n");
+		_a("present\t(meaning unknown)\n");
 	}
 
 	/* "deleted" */
@@ -414,9 +414,9 @@ void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *pre
 	}
 
 	/* "add" */
-	if (~subsysFlags & 0x0040) {
+	if (subsysFlags & 0x0040) {
 		_a("%s", prefix);
-		_a("not add\n");
+		_a("add\t(meaning unknown)\n");
 	}
 
 	/* "installed" */
@@ -427,23 +427,26 @@ void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *pre
 
 	if (subsysFlags & 0x0100) {
 		_a("%s", prefix);
-		_a("unknown flag 0100\n");
+		_a("unknown flag 0100h\n");
 	}
 	if (subsysFlags & 0x0200) {
 		_a("%s", prefix);
-		_a("unknown flag 0200\n");
+		_a("unknown flag 0200h\n");
 	}
 	if (subsysFlags & 0x0400) {
 		_a("%s", prefix);
 		_a("patch\n");
 	}
-	if (~subsysFlags & 0x0800) {
+	if (subsysFlags & 0x0800) {
 		_a("%s", prefix);
-		_a("miniroot\n");	/* antonym is "inplace" */
+		_a("inplace (installation does not require reboot)\n");
+	} else {
+		_a("%s", prefix);
+		_a("reboot required (sometimes called \"miniroot\"\n");
 	}
 	if (subsysFlags & 0x1000) {
 		_a("%s", prefix);
-		_a("unknown flag 1000\n");
+		_a("unknown flag 1000h\n");
 	}
 	if (subsysFlags & 0x2000) {
 		_a("%s", prefix);
@@ -451,11 +454,11 @@ void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *pre
 	}
 	if (subsysFlags & 0x4000) {
 		_a("%s", prefix);
-		_a("unknown flag 4000\n");
+		_a("unknown flag 4000h\n");
 	}
 	if (subsysFlags & 0x8000) {
 		_a("%s", prefix);
-		_a("overlays (see 'b' attribute)\n");
+		_a("overlay\n");
 	}
 }
 
@@ -558,7 +561,7 @@ int pd_analyze(void *pd, size_t pd_len, char **analysis, size_t *analysis_len, b
 	if (prodFormat >= 5) {
 		time_t prodDateTime = getInt(ctx);
 		if (!is_json) {
-			_a("datetime: %s", ctime(&prodDateTime));
+			_a("datetime: (%lu) %s", prodDateTime, ctime(&prodDateTime));
 		} else {
 			_a("\"datetime\": %lu,\n", prodDateTime);
 		}
