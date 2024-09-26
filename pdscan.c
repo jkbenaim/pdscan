@@ -442,7 +442,7 @@ void decodeFlags(struct pdscan_ctx_s *ctx, uint16_t subsysFlags, const char *pre
 		_a("inplace (installation does not require reboot)\n");
 	} else {
 		_a("%s", prefix);
-		_a("reboot required (sometimes called \"miniroot\"\n");
+		_a("reboot required (sometimes called \"miniroot\")\n");
 	}
 	if (subsysFlags & 0x1000) {
 		_a("%s", prefix);
